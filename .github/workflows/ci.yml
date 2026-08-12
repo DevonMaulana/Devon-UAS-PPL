@@ -18,7 +18,7 @@ jobs:
       # URL aplikasi ketika PHP built-in server berjalan
       BASE_URL: http://127.0.0.1:8000
 
-      # Chrome harus headless di GitHub Actions
+      # Chrome dijalankan secara headless pada GitHub Actions
       HEADLESS: "1"
 
       # Mencegah telemetry Selenium Manager
@@ -41,11 +41,11 @@ jobs:
           --health-retries=10
 
     steps:
-      # Mengambil source code repository
+      # 1. Mengambil source code repository
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # Menyiapkan PHP dan extension PDO MySQL
+      # 2. Menyiapkan PHP dan extension PDO MySQL
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -53,26 +53,41 @@ jobs:
           extensions: pdo_mysql
           tools: none
 
-      # Menyiapkan Python
+      # 3. Menyiapkan Python
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
-      # Menyiapkan Google Chrome dan ChromeDriver
+      # 4. Menyiapkan Chrome + ChromeDriver yang kompatibel
       - name: Setup Chrome
+        id: setup-chrome
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
           install-chromedriver: true
+          install-dependencies: true
 
-      # Install MySQL client agar SQL dump dapat di-import
+      # 5. Menyimpan path Chrome dan ChromeDriver
+      #    agar Selenium menggunakan pasangan versi yang sama
+      - name: Configure Chrome and ChromeDriver
+        run: |
+          echo "CHROME_BIN=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+          echo "CHROMEDRIVER_PATH=${{ steps.setup-chrome.outputs.chromedriver-path }}" >> "$GITHUB_ENV"
+
+          echo "=== Chrome Version ==="
+          "${{ steps.setup-chrome.outputs.chrome-path }}" --version
+
+          echo "=== ChromeDriver Version ==="
+          "${{ steps.setup-chrome.outputs.chromedriver-path }}" --version
+
+      # 6. Install MySQL client
       - name: Install MySQL Client
         run: |
           sudo apt-get update
           sudo apt-get install -y default-mysql-client
 
-      # Import database dari repository
+      # 7. Import database aplikasi
       - name: Import Database
         run: |
           mysql \
@@ -82,18 +97,18 @@ jobs:
             -proot123 \
             < db/damncrud.sql
 
-      # Install Selenium, Pytest, dan pytest-xdist
+      # 8. Install Selenium, Pytest, dan pytest-xdist
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Menjalankan aplikasi PHP di background
+      # 9. Menjalankan aplikasi PHP di background
       - name: Start PHP Server
         run: |
           php -S 127.0.0.1:8000 -t . > php-server.log 2>&1 &
 
-      # Memastikan aplikasi sudah dapat diakses
+      # 10. Memastikan aplikasi sudah dapat diakses
       - name: Wait for Application
         run: |
           curl \
@@ -102,7 +117,7 @@ jobs:
             --retry-connrefused \
             http://127.0.0.1:8000/login.php
 
-      # Menjalankan 5 test Selenium secara paralel
+      # 11. Menjalankan 5 Selenium test secara paralel
       - name: Run Selenium Tests in Parallel
         run: |
           pytest tests/test_functional.py -n auto -v
